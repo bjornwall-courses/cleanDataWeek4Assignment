@@ -1,0 +1,507 @@
+---
+title: "CodeBook2"
+author: "bjornwall"
+date: "12 March 2017"
+output:
+  html_document:
+    number_sections: true
+    toc: true
+    fig_width: 7
+    fig_height: 4.5
+    theme: readable
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Introduction
+This repo contains the week 4 assignment of the Getting and Cleaning Data course.
+
+The assignment is described here (<https://www.coursera.org/learn/data-cleaning/peer/FIZtT/getting-and-cleaning-data-course-project>, and is in short as follows:
+
+> You should create one R script called run_analysis.R that does the following.
+> 
+> 1. Merges the training and the test sets to create one data set.
+> 2. Extracts only the measurements on the mean and standard deviation for each measurement.
+> 3. Uses descriptive activity names to name the activities in the data set
+> 4. Appropriately labels the data set with descriptive variable names.
+> 5. From the data set in step 4, creates a second, independent tidy data set with 
+> the average of each variable for each activity and each subject.
+
+#Load the raw data
+
+```{r, message = FALSE}
+# Load packages
+library(dplyr) # data manipulation
+library(tidyr) # data tidying
+```
+
+Create necessary variables
+```{r variables, message = FALSE}
+mydestfile <- "dataset.zip"
+myfileurl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+mydestdir <- "data"
+mydestsubdir <- "UCI HAR Dataset"
+
+myfeaturesfile <- "features.txt"
+myactivitylabelsfile <- "activity_labels.txt"
+
+writeDestDir = "outputdata"
+writeDestTidyDsFilename = "HARtidydataset.csv"
+writeDestAverageDsFilename = "HARaveragesdataset.csv"
+```
+
+Create some helper functions (see the run_analysis.R script for details).
+```{r functions, echo=FALSE}
+##' forcedownload - if TRUE, the data from the url will be downloaded even if a local copy already exists
+downloadData <- function(url, destfile, destdir, forcedownload = FALSE) {
+    ##' Create the data directory and download the data
+    if(!file.exists(destdir)) {
+        dir.create(destdir)
+    }
+    
+    ##' If there is already a copy of the raw data in the destdir, don't download,
+    ##' unless forcedownload = true
+    if(any(!file.exists(file.path(destfile)), forcedownload)) {
+        
+        download.file(myfileurl,destfile = destfile, mode="wb")
+        dateDownloaded <- date()
+    }
+    
+    ##' Move to the data directory and unzip the data
+    ##' Any file with the same name that is already in destdir WILL be overwritten
+    if(any(!file.exists(file.path(destfile)), forcedownload)) {
+        setwd(destdir)
+        unzip(file.path("..",destfile), overwrite = TRUE)
+        
+        ##' Lastly, move back up
+        setwd(file.path(".."))    
+    }
+}
+##' Load the feature labels and select mean and standard deviation for each measurement
+##' mean(): Mean value
+##' std(): Standard deviation
+##' Returns a tibble with two columns and one row per feature:
+##' 1. id - The col id
+##' 2. featurename - The feature name
+loadFeatureLabels <- function(destdir,destsubdir) {
+    
+    setwd(file.path(destdir,destsubdir))
+    
+    rawfeaturesDf <- read.table(file = myfeaturesfile, header = FALSE, 
+                                colClasses = "character", stringsAsFactors = FALSE)
+    featuresTibble <- tbl_df(rawfeaturesDf)
+    rm(rawfeaturesDf)
+    
+    ##' Check for unique featurenames
+    #fnames <- c(featuresTibble$V2)
+    #print("Number of unique featurenames = length(unique(fnames)) =")
+    #print(length(unique(fnames)))
+    #print("Add row id + ### to featurenames to make them unique.")
+    
+    featuresTibble <- featuresTibble %>%
+        mutate(V2 = paste(V1,"###",V2, sep="")) %>%
+        rename(id = V1, featurename = V2)
+    
+    setwd(file.path("..",".."))
+    featuresTibble
+}
+
+loadActivityLabels <- function(destdir,destsubdir) {
+    ##' Load the activity labels
+    setwd(file.path(destdir,destsubdir))
+    
+    rawactivitylabelsDf <- read.table(file = myactivitylabelsfile, header = FALSE, 
+                                      colClasses = "character", stringsAsFactors = FALSE)
+    activityLabelsTibble <- tbl_df(rawactivitylabelsDf)
+    rm(rawactivitylabelsDf)
+    
+    ##' Clean the data
+    ##' Make id an int
+    ##' Rename col names
+    activityLabelsTibble <- activityLabelsTibble %>%
+        rename(id = V1, activity = V2) %>%
+        mutate(id = as.integer(id)) 
+    
+    setwd(file.path("..",".."))
+    activityLabelsTibble
+}
+
+##' This function writes a dataframe df in csv format to the destdir path
+##' (which will be created if needed), with the name passed in destfilename.
+##' If destfilename already exists, it will be overwritten if overwritefile is TRUE.
+writeCsvData <- function(df, destdir, destfilename, overwritefile = FALSE) {
+    ##' Create the destination directory if needed
+    if(!file.exists(destdir)) {
+        dir.create(destdir)
+    }
+    
+    ##' If destfilename already exists, only overwrite if overwritefile is TRUE
+    if(any(!file.exists(file.path(c(destdir, destfilename)), overwritefile))) {
+        setwd(file.path(destdir))
+        write.csv(df, file = destfilename, row.names = FALSE)
+        setwd(file.path(".."))
+    }
+}
+```
+
+Download the data
+```{r}
+downloadData(myfileurl, mydestfile, mydestdir, forcedownload = FALSE)
+```
+
+Load the selected feature and activity labels.
+```{r}
+featureLabels <- loadFeatureLabels(destdir = mydestdir, destsubdir = mydestsubdir)
+activityLabels <- loadActivityLabels(destdir = mydestdir, destsubdir = mydestsubdir)
+```
+It turns out the feature names are not unique - add the row id + "###" to make them unique.
+
+Take a look at the feature and activity labels
+```{r}
+str(featureLabels)
+activityLabels
+```
+
+Get the train and test data sets as tibbles (two identically formatted data tibbles), using the following helper functions.
+```{r}
+loadsubjectids <- function(type, destdir, destsubdir) {
+    setwd(file.path(destdir,destsubdir,type))
+    
+    rawsubjectDf <- read.table(file = paste("subject_",type,".txt", sep = ""), header = FALSE, 
+                               colClasses = "integer", stringsAsFactors = FALSE)
+    subjectIdsTibble <- tbl_df(rawsubjectDf)
+    rm(rawsubjectDf)
+    
+    subjectIdsTibble <- subjectIdsTibble %>%
+        rename(subjectid = V1)
+    
+    ##' Move back to original working directory
+    setwd(file.path("..","..",".."))
+    subjectIdsTibble
+}
+
+loadactivityids <- function(type, destdir, destsubdir) {
+    setwd(file.path(destdir,destsubdir,type))
+    
+    rawactivityDf <- read.table(file = paste("y_",type,".txt", sep = ""), header = FALSE, 
+                                colClasses = "integer", stringsAsFactors = FALSE)
+    activityTibble <- tbl_df(rawactivityDf)
+    rm(rawactivityDf)
+    
+    activityTibble <- activityTibble %>%
+        rename(activityid = V1)
+    
+    ##' Move back to original working directory
+    setwd(file.path("..","..",".."))
+    activityTibble
+}
+
+getfeaturesdata <- function(type = "train", destdir, destsubdir, featurelabels) {
+    setwd(file.path(destdir,destsubdir,type))
+    
+    rawfeaturesdatadf <- read.table(file = paste("X_",type,".txt", sep = ""), header = FALSE, 
+                                    colClasses = "numeric", stringsAsFactors = FALSE)
+    fdTibble <- tbl_df(rawfeaturesdatadf)
+    rm(rawfeaturesdatadf)
+    
+    fnames <- c(featurelabels$featurename)
+    colnames(fdTibble) <- fnames
+    
+    ##' Drop any column that doesn't contain mean() or std().
+    fdTibble <- select(fdTibble, matches("mean\\(\\)|std\\(\\)"))
+    
+    ##' Move back to original working directory
+    setwd(file.path("..","..",".."))
+    
+    fdTibble
+}
+
+getTibble <- function(type = "train", destdir, destsubdir, featureLabels, activityLabels) {
+    
+    ##' Load the subject ids in a tibble
+    subjectids <- loadsubjectids(type, destdir, destsubdir)
+    theTibble <- tbl_df(subjectids)
+    rm(subjectids)
+    
+    ##' Load the activity ids and colbind to the tibble
+    activityids <- loadactivityids(type, destdir, destsubdir)
+    theTibble <- tbl_df(cbind.data.frame(theTibble, activityids))
+    rm(activityids)
+    
+    ##' Load the dataset
+    theTibble <- tbl_df(cbind.data.frame(theTibble,getfeaturesdata(type, destdir, destsubdir, featureLabels)))
+    theTibble
+}
+```
+
+```{r}
+trainTibble <- getTibble(destdir = mydestdir, destsubdir = mydestsubdir, type = "train", featureLabels, activityLabels)
+testTibble <- getTibble(destdir = mydestdir, destsubdir = mydestsubdir, type = "test", featureLabels, activityLabels)
+rm(featureLabels)
+```
+
+Specifically, all featurecolumns that are not contain 'mean()' or 'std()', i.e. that do not match the following regular expression, are dropped:
+
+*matches("mean\\(\\)|std\\(\\)")*
+
+Merge the train and test tibbles
+```{r}
+tidyTibble <- tbl_df(rbind.data.frame(trainTibble,testTibble))
+rm(trainTibble)
+rm(testTibble)
+```
+The tidy tibble now looks like this:
+```{r}
+str(tidyTibble)
+```
+
+
+#Clean up the data
+##Clean up the column names
+Remove the leading indexes + ### in the column names that were added during loading to make them unique.
+First, check that the column names are now still unique if the helping rowid+### are removed.
+```{r}
+print(paste("Number of colnames = ",length(colnames(tidyTibble)),sep=""))
+cleanedcolnames <- sub("^[0-9]+###", "", colnames(tidyTibble))
+print(paste("Number of unique cleaned colnames = ",length(unique(cleanedcolnames)),sep=""))
+```
+
+Cleaning up the column names doesn't affect their count, i.e. we can safely clean the names back to their originals:
+
+```{r}
+colnames(tidyTibble) <- cleanedcolnames
+```
+
+```{r echo=FALSE}
+rm(cleanedcolnames)
+```
+
+##Add the activity descriptions to the data set.
+- Merge the tidy tibble with the activity tibble
+- Drop the activity id column and 
+- Put the activity description first
+- Remove underscores from the descriptions
+```{r}
+tidyTibble <- merge(tidyTibble, activityLabels, by.x = "activityid", by.y = "id",
+                    sort = FALSE)
+tidyTibble <- tidyTibble %>%
+    select(activity, everything()) %>%
+    select(-activityid)
+tidyTibble$activity <- sub("_","",tidyTibble$activity) 
+rm(activityLabels)
+```
+The first columns of the tibble now look like this:
+```{r}
+str(tidyTibble[1:4])
+```
+
+##Gather the data
+Now, gather all featuredata, leaving the activity data and subject ids untouched, resulting in a tall and thin tibble.
+```{r}
+tidyTibble <- tidyTibble %>% gather(tmpfeature, value, -(activity:subjectid))
+str(tidyTibble)
+```
+
+##Split the data
+###The signal domain, feature, measure and dimension variables
+1. Separate out the leading "f"/"t", indicating time or frequency signal domain, into the signaldomain variable, leaving the rest as the tmpfeature column. This tmpfeature column is kept throughout the splitting for reference and removed in the end.
+2. Separate out the remaining part before the dash into the feature variable
+3. Separate out the measure type (mean or standard deviation), using the trailing parenthesis.
+4. Finally, separate out the dimensions (x,y,z) into the dimension variable, leaving the ending paranthesis and the dash to identify records without further identifiers in their name.
+
+Somewhere along the line the tibble was turned back into a data frame, re-casting it to a tibble.
+
+The feature columns now look like this...:
+```{r}
+tidyTibble <- tidyTibble %>% separate(col = tmpfeature, into = c("signaldomain", "rest"), 
+                                      sep = c(1), convert = TRUE, remove = FALSE) %>% #separate out the leading f/t
+    separate(col = rest, into = c("feature", "rest"), sep = "-", extra = "merge") %>% #separate out the part before the first dash
+    separate(col = rest, into = c("measure", "dimension"), sep = "\\(", remove = FALSE, fill = "right") %>% #separate the mean/std and dimension, leaving blanks as ')' not to lose them
+    select(-rest) #drop the rest column
+tidyTibble <- tbl_df(tidyTibble)
+tidyTibble[,-c(1:2)]
+```
+
+... and the remaining unique values in the dimension column like this:
+```{r}
+unique(tidyTibble$dimension)
+```
+
+Set the non-axial values to NA, and clean up the axial names (for example .from '-)X' to 'X')
+```{r}
+nabool <- tidyTibble$dimension == ")"
+tidyTibble[nabool,"dimension"] <- NA
+rm(nabool)
+
+tidyTibble$dimension <- sub("\\)-","",tidyTibble$dimension)
+```
+
+The remaining feature values have the following unique values.
+```{r}
+##' Separate the remaining parts of the feature values
+table(tidyTibble$feature,tidyTibble$signaldomain)
+
+```
+There are three feature values that seems to have the leading 'Body' doubled ('BodyBodyAccJerkMag' etc). 
+Clean those by removing the extra leading 'Body'.
+```{r}
+tidyTibble$feature <- sub("BodyBody", "Body", tidyTibble$feature)
+table(tidyTibble$feature,tidyTibble$signaldomain)
+```
+
+###The acceleration type variable
+Now, separate out the leading Body|Gravity.
+Introduce a - to simplify separation.
+
+```{r}
+tidyTibble$feature <- sub("Body", "Body-", tidyTibble$feature)
+tidyTibble$feature <- sub("Gravity", "Gravity-", tidyTibble$feature)
+tidyTibble <- separate(tidyTibble, col = feature, into = c("accelerationtype","featurerest"), sep = "-", remove = TRUE)
+```
+The result including the remaining feature values look like this:
+```{r}
+table(tidyTibble$accelerationtype,tidyTibble$featurerest)
+```
+
+###The method variable
+Then, split up the remainders - on Acc/Gyro, Jerk/NA, Mag/NA
+```{r}
+
+tidyTibble$featurerest <- sub("Acc", "Acc-", tidyTibble$featurerest)
+tidyTibble$featurerest <- sub("Gyro", "Gyro-", tidyTibble$featurerest)
+tidyTibble <- separate(tidyTibble, col = featurerest, into = c("method", "featurerest2"), 
+                       sep = "-", remove = TRUE, fill = "right")
+table(tidyTibble$method, tidyTibble$featurerest2, useNA = "always")
+```
+
+Check for missing values and set these to NA.
+```{r}
+table(!grepl("(.+)", tidyTibble$featurerest2), tidyTibble$featurerest2, useNA = "always")
+tidyTibble[!grepl("(.+)", tidyTibble$featurerest2), "featurerest2"] <- NA
+table(tidyTibble$method, tidyTibble$featurerest2, useNA = "always")
+```
+
+###The isjerk and ismagnitude variables
+Separate out the remaining values with a little help from a 'aaa-' introduced between the 'Jerk' and 'Mag' values...
+```{r}
+tidyTibble$featurerest2 <- sub("Mag","aaa-Mag", tidyTibble$featurerest2)
+tidyTibble <- separate(tidyTibble, col = featurerest2, into = c("jerk","magnitude"), sep = "-",
+                       remove = FALSE, fill = "right")
+table(tidyTibble$magnitude, tidyTibble$jerk, useNA = "always")
+```
+
+... and turn the remaining 'aaa's into NAs and cleanup the 'Jerkaaa's and 'jerk's to 'jerk'.
+```{r}
+##' Remaining rest (jerk): aaa   Jerk Jerkaaa   <NA>
+tidyTibble[grepl("^aaa", tidyTibble$jerk), "jerk"] <- NA
+tidyTibble$jerk <- sub("Jerkaaa", "jerk", tidyTibble$jerk)
+tidyTibble$jerk <- sub("Jerk", "jerk", tidyTibble$jerk)
+tidyTibble$magnitude <- sub("Mag", "mag", tidyTibble$magnitude)
+table(tidyTibble$magnitude, tidyTibble$jerk, useNA = "always")
+```
+
+Turn the jerk and magnitude variables into booleans, and drop the temporary columns.
+```{r}
+tidyTibble <- tidyTibble %>% mutate(isjerk = ifelse(is.na(jerk), FALSE, TRUE)) %>%
+    mutate(ismagnitude = ifelse(is.na(magnitude), FALSE, TRUE)) %>%
+    select(-jerk, -magnitude) %>% 
+    select(-tmpfeature, -featurerest2) # Remove waste cols
+
+```
+
+###Cast to factors
+Convert values to lowercase in the factoring process.
+```{r}
+tidyTibble$activity <- factor(tidyTibble$activity, ordered = FALSE, levels = unique(tidyTibble$activity), 
+                              labels = tolower(unique(tidyTibble$activity)))
+tidyTibble$activity <- addNA(tidyTibble$activity, ifany = TRUE)
+
+
+tidyTibble$signaldomain <- factor(tidyTibble$signaldomain, ordered = FALSE)
+tidyTibble$signaldomain <- addNA(tidyTibble$signaldomain, ifany = TRUE)
+
+tidyTibble$accelerationtype <- factor(tidyTibble$accelerationtype, ordered = FALSE, 
+                                      levels = unique(tidyTibble$accelerationtype), 
+                                      labels = tolower(unique(tidyTibble$accelerationtype)))
+tidyTibble$accelerationtype <- addNA(tidyTibble$accelerationtype, ifany = TRUE)
+
+tidyTibble$method <- factor(tidyTibble$method, ordered = FALSE, 
+                            levels = unique(tidyTibble$method), 
+                            labels = tolower(unique(tidyTibble$method)))
+tidyTibble$method <- addNA(tidyTibble$method, ifany = TRUE)
+
+tidyTibble$measure <- factor(tidyTibble$measure, ordered = FALSE)
+tidyTibble$measure <- addNA(tidyTibble$measure, ifany = TRUE)
+
+tidyTibble$dimension <- factor(tidyTibble$dimension, ordered = FALSE, 
+                               levels = c("X", "Y", "Z"), 
+                               labels = tolower(c("X", "Y", "Z")))
+tidyTibble$dimension <- addNA(tidyTibble$dimension, ifany = TRUE)
+```
+
+Finally, convert subjectid to character so not to confuse it to be a value, and put the value last.
+```{r}
+tidyTibble$subjectid <- as.character(tidyTibble$subjectid)
+
+tidyTibble <- tidyTibble[,c(1:7, 9:10,8)]
+tidyTibble
+```
+
+#The tidy data set - HARtidydataset.csv
+Take a look at the tidy tibble:
+```{r}
+summary(tidyTibble)
+```
+
+* activity        : Factor w/ 6 levels: "standing", "sitting", "laying", "walking", "walkingdownstairs", "walkingupstairs".
+* subjectid       : Character ranging from "1" to "30", identifying the 30 subjects of the study.
+* signaldomain    : Factor w/ 2 levels "f","t", indicating frequency and time domain respectively
+* accelerationtype: Factor w/ 6 levels "body","gravity", indicating if value is the body or gravity part of the acceleration.
+* method          : Factor w/ 2 levels "acc","gyro", indicating if the value was obtained from the accelerometer or gyroscope.
+* measure         : Factor w/ 2 levels "mean","std", indicating if the value is an average (mean) or a standard deviation (std).
+* dimension       : Factor w/ 4 levels "x","y","z",NA indicating which room dimension the value is valid for, if any.
+* isjerk          : Logical, indicating if value is a jerk signal
+* ismagnitude     : Logical, indicating if value is the magnitude of a signal
+* value           : Numeric, holding the aggrated value specified by measure  
+
+##Units
+'acc' type values have unit = standard gravity units 'g', and 'gyro' type values have unit = radians/second.
+
+##Exporting the tidy dataset
+The averaged data set is exported to the `r writeDestTidyDsFilename` file.
+```{r}
+writeCsvData(df = tidyTibble, destdir = writeDestDir, destfile = writeDestTidyDsFilename, overwritefile = TRUE)
+```
+
+#The averaged dataset - HARaveragesdataset.csv
+Create the averaged dataset from the tidy tibble as a second, independent tidy data set, with the average of each variable for each activity and each subject.
+```{r}
+averages <- tidyTibble
+averages <- group_by(averages, activity, subjectid, signaldomain, accelerationtype, 
+                     method, measure, dimension, isjerk, ismagnitude) %>%
+    summarize(avg = mean(value))
+str(averages)
+```
+
+The same variables as in the tidy dataset, except the value has been been replaced by the averaged value (avg) per the nine variables.
+
+For example, the averaged mean and standard frequency gyro jerk values for subject 4 doing activity 'sitting', are:
+```{r}
+filter(averages, subjectid == "4", activity == "sitting", signaldomain =="f", isjerk == TRUE, method == "gyro") %>%
+    select(avg, accelerationtype, measure, dimension, ismagnitude, everything()) 
+```
+
+##Exporting the averaged dataset
+The averaged data set is exported to the `r writeDestAverageDsFilename` file.
+```{r}
+writeCsvData(df = averages, destdir = writeDestDir, destfile = writeDestAverageDsFilename, overwritefile = TRUE)
+```
+
+Notes 
+======
+* The raw data values were normalized and bounded within [-1,1].
+* Each feature vector is a row on the text file.
+* For more information about this dataset, see also the original documentation in the raw data.
