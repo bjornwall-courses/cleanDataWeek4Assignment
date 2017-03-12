@@ -28,8 +28,8 @@ myfeaturesfile <- "features.txt"
 myactivitylabelsfile <- "activity_labels.txt"
 
 writeDestDir = "outputdata"
-writeDestTidyDsFilename = "HARtidydataset.csv"
-writeDestAverageDsFilename = "HARaveragesdataset.csv"
+writeDestTidyDsFilename = "HARtidydataset.txt"
+writeDestAverageDsFilename = "HARaveragesdataset.txt"
 
 ##' This function downloads the raw data from the url location, places it in the destdir/subdestdir folder
 ##' (which will be created if needed), and stores it as destfile.
@@ -179,10 +179,10 @@ loadActivityLabels <- function(destdir,destsubdir) {
     activityLabelsTibble
 }
 
-##' This function writes a dataframe df in csv format to the destdir path
+##' This function writes a dataframe df in txt format to the destdir path
 ##' (which will be created if needed), with the name passed in destfilename.
 ##' If destfilename already exists, it will be overwritten if overwritefile is TRUE.
-writeCsvData <- function(df, destdir, destfilename, overwritefile = FALSE) {
+writeTableData <- function(df, destdir, destfilename, overwritefile = FALSE) {
     ##' Create the destination directory if needed
     if(!file.exists(destdir)) {
         dir.create(destdir)
@@ -191,7 +191,7 @@ writeCsvData <- function(df, destdir, destfilename, overwritefile = FALSE) {
     ##' If destfilename already exists, only overwrite if overwritefile is TRUE
     if(any(!file.exists(file.path(c(destdir, destfilename)), overwritefile))) {
         setwd(file.path(destdir))
-        write.csv(df, file = destfilename, row.names = FALSE)
+        write.table(df, file = destfilename, row.names = FALSE)
         setwd(file.path(".."))
     }
 }
@@ -378,5 +378,5 @@ print(str(tidyTibble))
 print(unique(tidyTibble$activity))
 
 ##' Return the datasets by dumping to file
-writeCsvData(df = tidyTibble, destdir = writeDestDir, destfile = writeDestTidyDsFilename, overwritefile = TRUE)
-writeCsvData(df = averages, destdir = writeDestDir, destfile = writeDestAverageDsFilename, overwritefile = TRUE)
+writeTableData(df = tidyTibble, destdir = writeDestDir, destfile = writeDestTidyDsFilename, overwritefile = TRUE)
+writeTableData(df = averages, destdir = writeDestDir, destfile = writeDestAverageDsFilename, overwritefile = TRUE)

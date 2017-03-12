@@ -208,8 +208,8 @@ myfeaturesfile &lt;-<span class="st"> &quot;features.txt&quot;</span>
 myactivitylabelsfile &lt;-<span class="st"> &quot;activity_labels.txt&quot;</span>
 
 writeDestDir =<span class="st"> &quot;outputdata&quot;</span>
-writeDestTidyDsFilename =<span class="st"> &quot;HARtidydataset.csv&quot;</span>
-writeDestAverageDsFilename =<span class="st"> &quot;HARaveragesdataset.csv&quot;</span></code></pre></div>
+writeDestTidyDsFilename =<span class="st"> &quot;HARtidydataset.txt&quot;</span>
+writeDestAverageDsFilename =<span class="st"> &quot;HARaveragesdataset.txt&quot;</span></code></pre></div>
 <p>Create some helper functions (see the run_analysis.R script for details).</p>
 <p>Download the data</p>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">downloadData</span>(myfileurl, mydestfile, mydestdir, <span class="dt">forcedownload =</span> <span class="ot">FALSE</span>)</code></pre></div>
@@ -672,8 +672,8 @@ tidyTibble</code></pre></div>
 </div>
 <div id="exporting-the-tidy-dataset" class="section level2">
 <h2><span class="header-section-number">4.2</span> Exporting the tidy dataset</h2>
-<p>The averaged data set is exported to the HARtidydataset.csv file.</p>
-<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">writeCsvData</span>(<span class="dt">df =</span> tidyTibble, <span class="dt">destdir =</span> writeDestDir, <span class="dt">destfile =</span> writeDestTidyDsFilename, <span class="dt">overwritefile =</span> <span class="ot">TRUE</span>)</code></pre></div>
+<p>The averaged data set is exported to the HARtidydataset.txt file.</p>
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">writeTableData</span>(<span class="dt">df =</span> tidyTibble, <span class="dt">destdir =</span> writeDestDir, <span class="dt">destfile =</span> writeDestTidyDsFilename, <span class="dt">overwritefile =</span> <span class="ot">TRUE</span>)</code></pre></div>
 </div>
 </div>
 <div id="the-averaged-dataset---haraveragesdataset.csv" class="section level1">
@@ -720,8 +720,8 @@ averages &lt;-<span class="st"> </span><span class="kw">group_by</span>(averages
 ## #   method &lt;fctr&gt;, isjerk &lt;lgl&gt;</code></pre>
 <div id="exporting-the-averaged-dataset" class="section level2">
 <h2><span class="header-section-number">5.1</span> Exporting the averaged dataset</h2>
-<p>The averaged data set is exported to the HARaveragesdataset.csv file.</p>
-<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">writeCsvData</span>(<span class="dt">df =</span> averages, <span class="dt">destdir =</span> writeDestDir, <span class="dt">destfile =</span> writeDestAverageDsFilename, <span class="dt">overwritefile =</span> <span class="ot">TRUE</span>)</code></pre></div>
+<p>The averaged data set is exported to the HARaveragesdataset.txt file.</p>
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">writeTableData</span>(<span class="dt">df =</span> averages, <span class="dt">destdir =</span> writeDestDir, <span class="dt">destfile =</span> writeDestAverageDsFilename, <span class="dt">overwritefile =</span> <span class="ot">TRUE</span>)</code></pre></div>
 </div>
 </div>
 <div id="notes" class="section level1">

@@ -28,8 +28,8 @@ https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Datas
 
 #The modified dataset includes the following files:
 1. Two tidy datasets (in the output data folder):
-    a. HARtidydataset.csv - the tidy dataset
-    b. HARaveragesdataset.csv - the dataset holding averaged values from the tidy dataset
+    a. HARtidydataset.txt - the tidy dataset
+    b. HARaveragesdataset.txt - the dataset holding averaged values from the tidy dataset
 2. The R script run_analysis.R that creates the tidy datasets from the raw data
 3. The codebook Codebook.Rmd that describes the variables
 4. This README.md file
