@@ -2,7 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
-.cleanDataWeek4assignment.Rproj
-assignment_instruction.txt
+run_analysis_fat.R
 dataset.zip
+cleanDataWeek4assignment.Rproj
+assignment_instruction.txt
 data/
